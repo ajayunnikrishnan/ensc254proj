@@ -38,6 +38,36 @@ Instruction parse_instruction(uint32_t instruction_bits) {
     break;
   // cases for other types of instructions
   /* YOUR CODE HERE */
+  case 0x03: // I-Type load
+  case 0x13: // I-Type non-load
+  case 0x73: // I-Type ecall
+    instruction.itype.rd     = instruction_bits & ((1U << 5) - 1); instruction_bits >>= 5;
+    instruction.itype.funct3 = instruction_bits & ((1U << 3) - 1); instruction_bits >>= 3;
+    instruction.itype.rs1    = instruction_bits & ((1U << 5) - 1); instruction_bits >>= 5;
+    instruction.itype.imm    = instruction_bits & ((1U << 12) - 1);
+    break;
+  case 0x23: // S-Type
+    instruction.stype.imm5   = instruction_bits & ((1U << 5) - 1); instruction_bits >>= 5;
+    instruction.stype.funct3 = instruction_bits & ((1U << 3) - 1); instruction_bits >>= 3;
+    instruction.stype.rs1    = instruction_bits & ((1U << 5) - 1); instruction_bits >>= 5;
+    instruction.stype.rs2    = instruction_bits & ((1U << 5) - 1); instruction_bits >>= 5;
+    instruction.stype.imm7   = instruction_bits & ((1U << 7) - 1);
+    break;
+  case 0x63: // SB-Type
+    instruction.sbtype.imm5   = instruction_bits & ((1U << 5) - 1); instruction_bits >>= 5;
+    instruction.sbtype.funct3 = instruction_bits & ((1U << 3) - 1); instruction_bits >>= 3;
+    instruction.sbtype.rs1    = instruction_bits & ((1U << 5) - 1); instruction_bits >>= 5;
+    instruction.sbtype.rs2    = instruction_bits & ((1U << 5) - 1); instruction_bits >>= 5;
+    instruction.sbtype.imm7   = instruction_bits & ((1U << 7) - 1);
+    break;
+  case 0x37: // U-Type
+    instruction.utype.rd  = instruction_bits & ((1U << 5) - 1); instruction_bits >>= 5;
+    instruction.utype.imm = instruction_bits & ((1U << 20) - 1);
+    break;
+  case 0x6F: // UJ-Type
+    instruction.ujtype.rd  = instruction_bits & ((1U << 5) - 1); instruction_bits >>= 5;
+    instruction.ujtype.imm = instruction_bits & ((1U << 20) - 1);
+    break;
 
   #ifndef TESTING
   default:
@@ -48,36 +78,52 @@ Instruction parse_instruction(uint32_t instruction_bits) {
 }
 
 /************************Helper functions************************/
-/* Here, you will need to implement a few common helper functions, 
- * which you will call in other functions when parsing, printing, 
+/* Here, you will need to implement a few common helper functions,
+ * which you will call in other functions when parsing, printing,
  * or executing the instructions. */
 
 /* Sign extends the given field to a 32-bit integer where field is
  * interpreted an n-bit integer. */
 int sign_extend_number(unsigned int field, unsigned int n) {
   /* YOUR CODE HERE */
-  return 0;
+  if (field & (1U << (n - 1)))
+    return (int)(field | (~0U << n));
+  return (int)field;
 }
 
 /* Return the number of bytes (from the current PC) to the branch label using
  * the given branch instruction */
 int get_branch_offset(Instruction instruction) {
   /* YOUR CODE HERE */
-  return 0;
+  unsigned int imm7 = instruction.sbtype.imm7;
+  unsigned int imm5 = instruction.sbtype.imm5;
+  unsigned int offset = 0;
+  offset |= ((imm7 >> 6) & 0x1) << 12;
+  offset |= ((imm5) & 0x1)      << 11;
+  offset |= ((imm7) & 0x3F)     << 5;
+  offset |= ((imm5 >> 1) & 0xF) << 1;
+  return sign_extend_number(offset, 13);
 }
 
 /* Returns the number of bytes (from the current PC) to the jump label using the
  * given jump instruction */
 int get_jump_offset(Instruction instruction) {
   /* YOUR CODE HERE */
-  return 0;
+  unsigned int imm = instruction.ujtype.imm;
+  unsigned int offset = 0;
+  offset |= ((imm >> 19) & 0x1) << 20;
+  offset |= ((imm) & 0xFF)       << 12;
+  offset |= ((imm >> 8) & 0x1)   << 11;
+  offset |= ((imm >> 9) & 0x3FF) << 1;
+  return sign_extend_number(offset, 21);
 }
 
 /* Returns the number of bytes (from the current PC) to the base address using the
  * given store instruction */
 int get_store_offset(Instruction instruction) {
   /* YOUR CODE HERE */
-  return 0;
+  unsigned int offset = (instruction.stype.imm7 << 5) | instruction.stype.imm5;
+  return sign_extend_number(offset, 12);
 }
 /************************Helper functions************************/
 
