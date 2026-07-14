@@ -5,6 +5,23 @@
 #include "utils.h"
 #include "pipeline.h"
 
+/**
+ * ALU control encodings used internally by gen_alu_control() / execute_alu().
+ * These correspond to the "ALU control" signal in the textbook datapath -
+ * a widened version since RV32I needs more operations than MIPS' simple ALU.
+ */
+#define ALU_ADD  0x0
+#define ALU_SUB  0x1
+#define ALU_MUL  0x2
+#define ALU_AND  0x3
+#define ALU_OR   0x4
+#define ALU_XOR  0x5
+#define ALU_SLL  0x6
+#define ALU_SRL  0x7
+#define ALU_SRA  0x8
+#define ALU_SLT  0x9
+#define ALU_SLTU 0xA
+
 /// EXECUTE STAGE HELPERS ///
 
 /**
@@ -13,10 +30,52 @@
  **/
 uint32_t gen_alu_control(idex_reg_t idex_reg)
 {
-  uint32_t alu_control = 0;
-  /**
-   * YOUR CODE HERE
-   */
+  uint32_t alu_control = ALU_ADD;
+  Instruction instr = idex_reg.instr;
+
+  switch(instr.opcode)
+  {
+    case 0x33: // R-type: funct3 + funct7 select the operation
+      switch(instr.rtype.funct3)
+      {
+        case 0x0:
+          if (instr.rtype.funct7 == 0x01)      alu_control = ALU_MUL; // mul
+          else if (instr.rtype.funct7 == 0x20) alu_control = ALU_SUB; // sub
+          else                                  alu_control = ALU_ADD; // add
+          break;
+        case 0x1: alu_control = ALU_SLL;  break; // sll
+        case 0x2: alu_control = ALU_SLT;  break; // slt
+        case 0x3: alu_control = ALU_SLTU; break; // sltu
+        case 0x4: alu_control = ALU_XOR;  break; // xor
+        case 0x5: alu_control = (instr.rtype.funct7 == 0x20) ? ALU_SRA : ALU_SRL; break; // sra/srl
+        case 0x6: alu_control = ALU_OR;   break; // or
+        case 0x7: alu_control = ALU_AND;  break; // and
+        default:  alu_control = ALU_ADD;  break;
+      }
+      break;
+
+    case 0x13: // I-type ALU: same funct3 encodings as R-type, funct7 comes from imm[10]
+      switch(instr.itype.funct3)
+      {
+        case 0x0: alu_control = ALU_ADD;  break; // addi
+        case 0x1: alu_control = ALU_SLL;  break; // slli
+        case 0x2: alu_control = ALU_SLT;  break; // slti
+        case 0x3: alu_control = ALU_SLTU; break; // sltiu
+        case 0x4: alu_control = ALU_XOR;  break; // xori
+        case 0x5: alu_control = ((instr.itype.imm >> 10) & 0x1) ? ALU_SRA : ALU_SRL; break; // srai/srli
+        case 0x6: alu_control = ALU_OR;   break; // ori
+        case 0x7: alu_control = ALU_AND;  break; // andi
+        default:  alu_control = ALU_ADD;  break;
+      }
+      break;
+
+    case 0x03: // Load:  address = rs1 + imm            -> add
+    case 0x23: // Store: address = rs1 + imm            -> add
+    case 0x37: // LUI:   result  = 0 (rs1 unused) + imm  -> add
+    default:   // branches / jal / ecall: ALU result unused, default to add
+      alu_control = ALU_ADD;
+      break;
+  }
   return alu_control;
 }
 
@@ -28,12 +87,39 @@ uint32_t execute_alu(uint32_t alu_inp1, uint32_t alu_inp2, uint32_t alu_control)
 {
   uint32_t result;
   switch(alu_control){
-    case 0x0: //add
+    case ALU_ADD: //add
       result = alu_inp1 + alu_inp2;
       break;
-    /**
-     * YOUR CODE HERE
-     */
+    case ALU_SUB: //sub
+      result = alu_inp1 - alu_inp2;
+      break;
+    case ALU_MUL: //mul (lower 32 bits of the product)
+      result = alu_inp1 * alu_inp2;
+      break;
+    case ALU_AND: //and
+      result = alu_inp1 & alu_inp2;
+      break;
+    case ALU_OR: //or
+      result = alu_inp1 | alu_inp2;
+      break;
+    case ALU_XOR: //xor
+      result = alu_inp1 ^ alu_inp2;
+      break;
+    case ALU_SLL: //shift left logical (only low 5 bits of shift amount matter for RV32)
+      result = alu_inp1 << (alu_inp2 & 0x1F);
+      break;
+    case ALU_SRL: //shift right logical
+      result = alu_inp1 >> (alu_inp2 & 0x1F);
+      break;
+    case ALU_SRA: //shift right arithmetic (sign-extending)
+      result = (uint32_t)(((sWord)alu_inp1) >> (alu_inp2 & 0x1F));
+      break;
+    case ALU_SLT: //set less than (signed)
+      result = (((sWord)alu_inp1) < ((sWord)alu_inp2)) ? 1 : 0;
+      break;
+    case ALU_SLTU: //set less than (unsigned)
+      result = (alu_inp1 < alu_inp2) ? 1 : 0;
+      break;
     default:
       result = 0xBADCAFFE;
       break;
@@ -50,17 +136,24 @@ uint32_t execute_alu(uint32_t alu_inp1, uint32_t alu_inp2, uint32_t alu_control)
 uint32_t gen_imm(Instruction instruction)
 {
   int imm_val = 0;
-  /**
-   * YOUR CODE HERE
-   */
   switch(instruction.opcode) {
-        case 0x63: //B-type
+        case 0x63: //B-type (branch)
             imm_val = get_branch_offset(instruction);
             break;
-        /**
-         * YOUR CODE HERE
-         */
-        default: // R and undefined opcode
+        case 0x13: //I-type ALU (addi, slti, xori, ...)
+        case 0x03: //I-type load
+            imm_val = sign_extend_number(instruction.itype.imm, 12);
+            break;
+        case 0x23: //S-type (store)
+            imm_val = get_store_offset(instruction);
+            break;
+        case 0x37: //U-type (lui) - imm occupies bits [31:12], so pre-shift it
+            imm_val = instruction.utype.imm << 12;
+            break;
+        case 0x6F: //UJ-type (jal)
+            imm_val = get_jump_offset(instruction);
+            break;
+        default: // R-type and undefined opcodes have no immediate
             break;
     };
     return imm_val;
@@ -75,12 +168,39 @@ idex_reg_t gen_control(Instruction instruction)
 {
   idex_reg_t idex_reg = {0};
   switch(instruction.opcode) {
-      case 0x33:  //R-type
-        /**
-         * YOUR CODE HERE
-         */
-          break;
-      default:  // Remaining opcodes
+      case 0x33:  //R-type: writes rd from the ALU, both operands are registers
+        idex_reg.reg_write = true;
+        idex_reg.alu_src   = false;
+        break;
+      case 0x13:  //I-type ALU: writes rd from the ALU, 2nd operand is imm
+        idex_reg.reg_write = true;
+        idex_reg.alu_src   = true;
+        break;
+      case 0x03:  //Load: address = rs1+imm, writes rd from memory
+        idex_reg.reg_write  = true;
+        idex_reg.alu_src    = true;
+        idex_reg.mem_read   = true;
+        idex_reg.mem_to_reg = true;
+        break;
+      case 0x23:  //Store: address = rs1+imm, writes rs2's value to memory
+        idex_reg.reg_write = false;
+        idex_reg.alu_src   = true;
+        idex_reg.mem_write = true;
+        break;
+      case 0x63:  //Branch: compares rs1/rs2, may redirect PC, never writes rd
+        idex_reg.reg_write = false;
+        idex_reg.alu_src   = false;
+        idex_reg.branch    = true;
+        break;
+      case 0x37:  //LUI: writes rd = imm (ALU adds 0 + imm, see stage_execute)
+        idex_reg.reg_write = true;
+        idex_reg.alu_src   = true;
+        break;
+      case 0x6F:  //JAL: writes rd = return address, unconditionally redirects PC
+        idex_reg.reg_write = true;
+        idex_reg.jump      = true;
+        break;
+      default:  // ecall and any remaining/undefined opcodes: no register write
           break;
   }
   return idex_reg;
@@ -90,15 +210,27 @@ idex_reg_t gen_control(Instruction instruction)
 
 /**
  * evaluates whether a branch must be taken
- * input  : <open to implementation>
- * output : bool
+ * input  : the branch instruction, and the two register values it compares
+ * output : bool - true if the branch is taken
+ *
+ * Note: RV32 has six branch conditions (beq/bne/blt/bge/bltu/bgeu), so unlike
+ * a simple MIPS "subtract and check zero" trick, we need the actual signed
+ * and unsigned comparisons - funct3 selects which one applies.
  **/
-bool gen_branch(/*<args>*/)
+bool gen_branch(Instruction instruction, uint32_t rs1_val, uint32_t rs2_val)
 {
-  /**
-   * YOUR CODE HERE
-   */
-  return false;
+  bool taken = false;
+  switch(instruction.sbtype.funct3)
+  {
+    case 0x0: taken = (rs1_val == rs2_val); break;                      // beq
+    case 0x1: taken = (rs1_val != rs2_val); break;                      // bne
+    case 0x4: taken = ((sWord)rs1_val <  (sWord)rs2_val); break;        // blt  (signed)
+    case 0x5: taken = ((sWord)rs1_val >= (sWord)rs2_val); break;        // bge  (signed)
+    case 0x6: taken = (rs1_val <  rs2_val); break;                      // bltu (unsigned)
+    case 0x7: taken = (rs1_val >= rs2_val); break;                      // bgeu (unsigned)
+    default:  taken = false; break;
+  }
+  return taken;
 }
 
 
@@ -113,7 +245,9 @@ bool gen_branch(/*<args>*/)
 void gen_forward(pipeline_regs_t* pregs_p, pipeline_wires_t* pwires_p)
 {
   /**
-   * YOUR CODE HERE
+   * Not needed for Milestone 1: MS1 assumes a hazard-free instruction stream
+   * (nops already inserted for you), so no forwarding logic runs yet.
+   * This will be implemented in Milestone 2.
    */
 }
 
@@ -126,7 +260,8 @@ void gen_forward(pipeline_regs_t* pregs_p, pipeline_wires_t* pwires_p)
 void detect_hazard(pipeline_regs_t* pregs_p, pipeline_wires_t* pwires_p, regfile_t* regfile_p)
 {
   /**
-   * YOUR CODE HERE
+   * Not needed for Milestone 1, same reasoning as gen_forward() above.
+   * This will be implemented in Milestone 2.
    */
 }
 

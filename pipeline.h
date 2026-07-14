@@ -18,6 +18,7 @@ extern uint64_t stall_counter;
 extern uint64_t branch_counter;
 extern uint64_t fwd_exex_counter;
 extern uint64_t fwd_exmem_counter;
+extern uint64_t mem_access_counter; // counts data-memory accesses; riscv.c resets/uses this directly
 
 ///////////////////////////////////////////////////////////////////////////////
 /// RISC-V Pipeline Register Types
@@ -39,6 +40,21 @@ typedef struct
   /**
    * Add other fields here
    */
+
+  // values read out of the register file in decode
+  uint32_t rs1_val;
+  uint32_t rs2_val;
+  uint32_t imm;
+  uint32_t rd;
+
+  // control signals generated in decode (see gen_control)
+  bool reg_write;   // WB : write result into rd
+  bool mem_read;    // M  : load from data memory
+  bool mem_write;   // M  : store to data memory
+  bool mem_to_reg;  // WB : writeback value comes from memory, not ALU
+  bool alu_src;     // EX : ALU's 2nd operand is the immediate, not rs2
+  bool branch;      // M  : instruction is a conditional branch
+  bool jump;        // instruction is an unconditional jump (jal)
 }idex_reg_t;
 
 typedef struct
@@ -48,6 +64,15 @@ typedef struct
   /**
    * Add other fields here
    */
+
+  uint32_t alu_result;
+  uint32_t rs2_val;   // carried along for stores (value to write to memory)
+  uint32_t rd;
+
+  bool reg_write;
+  bool mem_read;
+  bool mem_write;
+  bool mem_to_reg;
 }exmem_reg_t;
 
 typedef struct
@@ -57,6 +82,13 @@ typedef struct
   /**
    * Add other fields here
    */
+
+  uint32_t alu_result;
+  uint32_t mem_result;
+  uint32_t rd;
+
+  bool reg_write;
+  bool mem_to_reg;
 }memwb_reg_t;
 
 
