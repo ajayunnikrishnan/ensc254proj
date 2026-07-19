@@ -47,6 +47,12 @@ typedef struct
   uint32_t imm;
   uint32_t rd;
 
+  // source register numbers, needed by forwarding/hazard units (ms2)
+  uint32_t rs1;
+  uint32_t rs2;
+  bool use_rs1;   // instruction actually reads rs1
+  bool use_rs2;   // instruction actually reads rs2
+
   // control signals generated in decode (see gen_control)
   bool reg_write;   // WB : write result into rd
   bool mem_read;    // M  : load from data memory
@@ -73,6 +79,10 @@ typedef struct
   bool mem_read;
   bool mem_write;
   bool mem_to_reg;
+
+  // branch outcome computed in ex, acted on in mem (ms2)
+  bool     branch_taken;
+  uint32_t branch_target;
 }exmem_reg_t;
 
 typedef struct
@@ -89,6 +99,10 @@ typedef struct
 
   bool reg_write;
   bool mem_to_reg;
+
+  // branch outcome checked here (mem/wb boundary) to trigger the flush (ms2)
+  bool     branch_taken;
+  uint32_t branch_target;
 }memwb_reg_t;
 
 
@@ -140,6 +154,10 @@ typedef struct
   /**
    * Add other fields here
    */
+
+  // set by detect_hazard on a load-use hazard, consumed in cycle_pipeline (ms2)
+  bool      stall;
+
 }pipeline_wires_t;
 
 

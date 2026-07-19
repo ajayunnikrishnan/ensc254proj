@@ -210,6 +210,7 @@ void execute_rtype(Instruction instruction, Processor *processor) {
                     exit(-1);
                     break;                
             }
+            break;  // was missing: sltu/mulhu fell through into the f3=7 (and) case
 
         case 0x7: 
             switch (instruction.rtype.funct7) {

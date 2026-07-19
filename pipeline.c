@@ -17,12 +17,34 @@ uint64_t mem_access_counter = 0;
 
 simulator_config_t sim_config = {0};
 
+#ifdef DEBUG_CYCLE
+// 0x00000000 is not a valid opcode (it fills the empty bootstrap slots and
+// memory past the program), and decode_instruction exits on it; print a bare
+// newline instead, matching the reference traces
+static void print_instruction(uint32_t bits)
+{
+  if (bits) decode_instruction(bits);
+  else      putchar('\n');
+}
+#endif
+
 ///////////////////////////////////////////////////////////////////////////////
 
 void bootstrap(pipeline_wires_t* pwires_p, pipeline_regs_t* pregs_p, regfile_t* regfile_p)
 {
   // PC src must get the same value as the default PC value
   pwires_p->pc_src0 = regfile_p->PC;
+
+  // empty bootstrap slots hold 0x00000000, matching the reference traces;
+  // print_instruction() below handles printing them as blank lines
+  pregs_p->ifid_preg.inp.instr.bits   = 0x00000000;
+  pregs_p->ifid_preg.out.instr.bits   = 0x00000000;
+  pregs_p->idex_preg.inp.instr.bits   = 0x00000000;
+  pregs_p->idex_preg.out.instr.bits   = 0x00000000;
+  pregs_p->exmem_preg.inp.instr.bits  = 0x00000000;
+  pregs_p->exmem_preg.out.instr.bits  = 0x00000000;
+  pregs_p->memwb_preg.inp.instr.bits  = 0x00000000;
+  pregs_p->memwb_preg.out.instr.bits  = 0x00000000;
 }
 
 ///////////////////////////
@@ -41,6 +63,7 @@ ifid_reg_t stage_fetch(pipeline_wires_t* pwires_p, regfile_t* regfile_p, Byte* m
   // and a redirected target (pc_src1) set by stage_execute when a branch/jal
   // resolved during the *previous* cycle.
   regfile_p->PC = pwires_p->pcsrc ? pwires_p->pc_src1 : pwires_p->pc_src0;
+  pwires_p->pcsrc = false;  // one-shot redirect, consumed here
 
   uint32_t instruction_bits = load(memory_p, regfile_p->PC, LENGTH_WORD);
   // 0x00000000 is not a valid RISC-V opcode; it shows up when the pipeline
@@ -61,7 +84,7 @@ ifid_reg_t stage_fetch(pipeline_wires_t* pwires_p, regfile_t* regfile_p, Byte* m
 
   #ifdef DEBUG_CYCLE
   printf("[IF ]: Instruction [%08x]@[%08x]: ", instruction_bits, regfile_p->PC);
-  decode_instruction(instruction_bits);
+  print_instruction(instruction_bits);
   #endif
   return ifid_reg;
 }
@@ -72,11 +95,9 @@ ifid_reg_t stage_fetch(pipeline_wires_t* pwires_p, regfile_t* regfile_p, Byte* m
  **/ 
 idex_reg_t stage_decode(ifid_reg_t ifid_reg, pipeline_wires_t* pwires_p, regfile_t* regfile_p)
 {
-  (void)pwires_p; // not needed for decode in MS1 (no hazards to check yet)
-
   #ifdef DEBUG_CYCLE
   printf("[ID ]: Instruction [%08x]@[%08x]: ", ifid_reg.instr.bits, ifid_reg.instr_addr);
-  decode_instruction(ifid_reg.instr.bits);
+  print_instruction(ifid_reg.instr.bits);
   #endif
 
   Instruction instr = ifid_reg.instr;
@@ -89,40 +110,21 @@ idex_reg_t stage_decode(ifid_reg_t ifid_reg, pipeline_wires_t* pwires_p, regfile
 
   // figure out which register fields are meaningful for this instruction's
   // format so we read the right rs1/rs2/rd out of the union.
-  uint32_t rs1 = 0, rs2 = 0, rd = 0;
-  switch(instr.opcode)
-  {
-    case 0x33: // R-type
-      rs1 = instr.rtype.rs1;
-      rs2 = instr.rtype.rs2;
-      rd  = instr.rtype.rd;
-      break;
-    case 0x13: // I-type ALU
-    case 0x03: // Load
-      rs1 = instr.itype.rs1;
-      rd  = instr.itype.rd;
-      break;
-    case 0x23: // Store
-      rs1 = instr.stype.rs1;
-      rs2 = instr.stype.rs2;
-      break;
-    case 0x63: // Branch
-      rs1 = instr.sbtype.rs1;
-      rs2 = instr.sbtype.rs2;
-      break;
-    case 0x37: // LUI (no source registers)
-      rd = instr.utype.rd;
-      break;
-    case 0x6F: // JAL (no source registers)
-      rd = instr.ujtype.rd;
-      break;
-    default: // ecall, undefined opcodes
-      break;
-  }
+  uint32_t rs1, rs2, rd;
+  bool use_rs1, use_rs2;
+  gen_reg_fields(instr, &rs1, &rs2, &rd, &use_rs1, &use_rs2);
 
+  // note: decode reads the regfile before writeback updates it this cycle,
+  // so an instruction 3 behind its producer sees the pre-writeback value;
+  // this matches the reference pipeline, which has no regfile-internal
+  // forwarding (verified against ms2 random.trace)
   idex_reg.rs1_val = regfile_p->R[rs1];
   idex_reg.rs2_val = regfile_p->R[rs2];
   idex_reg.rd      = rd;
+  idex_reg.rs1     = rs1;
+  idex_reg.rs2     = rs2;
+  idex_reg.use_rs1 = use_rs1;
+  idex_reg.use_rs2 = use_rs2;
   idex_reg.imm     = gen_imm(instr);
 
   return idex_reg;
@@ -136,7 +138,7 @@ exmem_reg_t stage_execute(idex_reg_t idex_reg, pipeline_wires_t* pwires_p)
 {
   #ifdef DEBUG_CYCLE
   printf("[EX ]: Instruction [%08x]@[%08x]: ", idex_reg.instr.bits, idex_reg.instr_addr);
-  decode_instruction(idex_reg.instr.bits);
+  print_instruction(idex_reg.instr.bits);
   #endif
 
   exmem_reg_t exmem_reg = {0};
@@ -155,26 +157,23 @@ exmem_reg_t stage_execute(idex_reg_t idex_reg, pipeline_wires_t* pwires_p)
   uint32_t alu_inp2    = idex_reg.alu_src ? idex_reg.imm : idex_reg.rs2_val;
   exmem_reg.alu_result = execute_alu(idex_reg.rs1_val, alu_inp2, alu_control);
 
-  // Resolve branches/jumps here (this IS the "calculates branch targets" part
-  // of the EX stage). Whatever we set here takes effect on *next* cycle's
-  // fetch, since this cycle's stage_fetch already ran earlier using last
-  // cycle's decision - that 2-cycle gap is exactly why MS1's test programs
-  // have nops inserted after every branch/jump.
-  pwires_p->pcsrc = false;
+  // ms2: the branch decision/target is computed here (with forwarded operand
+  // values), but it is only acted on when the instruction reaches mem - the
+  // flush happens in cycle_pipeline once the outcome sits in the memwb register
+  (void)pwires_p;
   if (idex_reg.branch)
   {
     if (gen_branch(idex_reg.instr, idex_reg.rs1_val, idex_reg.rs2_val))
     {
-      pwires_p->pcsrc   = true;
-      pwires_p->pc_src1 = idex_reg.instr_addr + idex_reg.imm;
-      branch_counter++;
+      exmem_reg.branch_taken  = true;
+      exmem_reg.branch_target = idex_reg.instr_addr + idex_reg.imm;
     }
   }
   else if (idex_reg.jump)
   {
-    pwires_p->pcsrc      = true;
-    pwires_p->pc_src1    = idex_reg.instr_addr + idex_reg.imm;
-    exmem_reg.alu_result = idex_reg.instr_addr + 4; // jal writes ret. addr to rd
+    exmem_reg.branch_taken  = true;
+    exmem_reg.branch_target = idex_reg.instr_addr + idex_reg.imm;
+    exmem_reg.alu_result    = idex_reg.instr_addr + 4; // jal writes ret. addr to rd
   }
 
   return exmem_reg;
@@ -191,7 +190,7 @@ memwb_reg_t stage_mem(exmem_reg_t exmem_reg, pipeline_wires_t* pwires_p, Byte* m
 
   #ifdef DEBUG_CYCLE
   printf("[MEM]: Instruction [%08x]@[%08x]: ", exmem_reg.instr.bits, exmem_reg.instr_addr);
-  decode_instruction(exmem_reg.instr.bits);
+  print_instruction(exmem_reg.instr.bits);
   #endif
 
   memwb_reg_t memwb_reg = {0};
@@ -201,6 +200,8 @@ memwb_reg_t stage_mem(exmem_reg_t exmem_reg, pipeline_wires_t* pwires_p, Byte* m
   memwb_reg.mem_to_reg = exmem_reg.mem_to_reg;
   memwb_reg.rd         = exmem_reg.rd;
   memwb_reg.alu_result = exmem_reg.alu_result;
+  memwb_reg.branch_taken  = exmem_reg.branch_taken;
+  memwb_reg.branch_target = exmem_reg.branch_target;
 
   if (exmem_reg.mem_read || exmem_reg.mem_write)
   {
@@ -250,7 +251,7 @@ void stage_writeback(memwb_reg_t memwb_reg, pipeline_wires_t* pwires_p, regfile_
 
   #ifdef DEBUG_CYCLE
   printf("[WB ]: Instruction [%08x]@[%08x]: ", memwb_reg.instr.bits, memwb_reg.instr_addr);
-  decode_instruction(memwb_reg.instr.bits);
+  print_instruction(memwb_reg.instr.bits);
   #endif
 
   // WB-stage mux: mem_to_reg picks between the ALU result and the loaded
@@ -280,14 +281,63 @@ void cycle_pipeline(regfile_t* regfile_p, Byte* memory_p, Cache* cache_p, pipeli
 
   /* Output               |    Stage      |       Inputs  */
   pregs_p->ifid_preg.inp  = stage_fetch     (pwires_p, regfile_p, memory_p);
-  
+
+  // load-use hazard check, before the use instruction is decoded
+  detect_hazard(pregs_p, pwires_p, regfile_p);
+
   pregs_p->idex_preg.inp  = stage_decode    (pregs_p->ifid_preg.out, pwires_p, regfile_p);
+
+  // forwarding for the instruction about to execute
+  gen_forward(pregs_p, pwires_p);
 
   pregs_p->exmem_preg.inp = stage_execute   (pregs_p->idex_preg.out, pwires_p);
 
   pregs_p->memwb_preg.inp = stage_mem       (pregs_p->exmem_preg.out, pwires_p, memory_p, cache_p);
 
                             stage_writeback (pregs_p->memwb_preg.out, pwires_p, regfile_p);
+
+  if (pwires_p->stall)
+  {
+    // hold the stalled instruction in ifid so it decodes again next cycle
+    // (pc was already rewritten in detect_hazard so if refetches next cycle)
+    pregs_p->ifid_preg.inp = pregs_p->ifid_preg.out;
+    // the freshly decoded copy still travels down the pipeline (it keeps its
+    // instruction bits and source registers, so the forwarding unit fires on
+    // it just like the reference), but every effect is squashed: it must not
+    // write a register, touch memory, or resolve as a branch
+    pregs_p->idex_preg.inp.reg_write = false;
+    pregs_p->idex_preg.inp.mem_read  = false;
+    pregs_p->idex_preg.inp.mem_write = false;
+    pregs_p->idex_preg.inp.branch    = false;
+    pregs_p->idex_preg.inp.jump      = false;
+    pwires_p->stall = false;
+  }
+
+  // control hazard: branch/jal outcome now sits in the memwb register
+  if (pregs_p->memwb_preg.inp.branch_taken)
+  {
+    pwires_p->pcsrc   = true;
+    pwires_p->pc_src1 = pregs_p->memwb_preg.inp.branch_target;
+    branch_counter++;
+
+    // flush ifid, idex, exmem: nop the instr, drop all control, keep the addr
+    ifid_reg_t  ifid_f  = {0};
+    idex_reg_t  idex_f  = {0};
+    exmem_reg_t exmem_f = {0};
+    ifid_f.instr.bits  = 0x00000013;
+    idex_f.instr.bits  = 0x00000013;
+    exmem_f.instr.bits = 0x00000013;
+    ifid_f.instr_addr  = pregs_p->ifid_preg.inp.instr_addr;
+    idex_f.instr_addr  = pregs_p->idex_preg.inp.instr_addr;
+    exmem_f.instr_addr = pregs_p->exmem_preg.inp.instr_addr;
+    pregs_p->ifid_preg.inp  = ifid_f;
+    pregs_p->idex_preg.inp  = idex_f;
+    pregs_p->exmem_preg.inp = exmem_f;
+
+    #ifdef DEBUG_CYCLE
+    printf("[CPL]: Pipeline Flushed\n");
+    #endif
+  }
 
   // update all the output registers for the next cycle from the input registers in the current cycle
   pregs_p->ifid_preg.out  = pregs_p->ifid_preg.inp;
