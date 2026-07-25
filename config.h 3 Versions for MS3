@@ -1,0 +1,64 @@
+/* =========================================================
+   cache_complete
+   Use with:
+   ./test_simulator_ms3.sh cache_complete
+   ========================================================= */
+
+#ifndef __CONFIG_H__
+#define __CONFIG_H__
+
+#define DEBUG_REG_TRACE
+#define DEBUG_CYCLE
+#define PRINT_STATS
+#define MEM_LATENCY 100
+#define CACHE_ENABLE
+#define PRINT_CACHE_STATS
+#define PRINT_CACHE_TRACES
+
+#endif // __CONFIG_H__
+
+
+/* =========================================================
+   cache_summary
+   Use with:
+   ./test_simulator_ms3.sh cache_summary
+   ========================================================= */
+
+#ifndef __CONFIG_H__
+#define __CONFIG_H__
+
+// #define DEBUG_REG_TRACE
+// #define DEBUG_CYCLE
+
+#define PRINT_STATS
+#define MEM_LATENCY 100
+#define CACHE_ENABLE
+#define PRINT_CACHE_STATS
+
+// #define PRINT_CACHE_TRACES
+
+#endif // __CONFIG_H__
+
+
+/* =========================================================
+    no_cache
+   Use with:
+   ./test_simulator_ms3.sh no_cache
+   ========================================================= */
+
+#ifndef __CONFIG_H__
+#define __CONFIG_H__
+
+// #define DEBUG_REG_TRACE
+// #define DEBUG_CYCLE
+
+#define PRINT_STATS
+#define MEM_LATENCY 100
+
+// #define CACHE_ENABLE
+
+#define PRINT_CACHE_STATS
+
+// #define PRINT_CACHE_TRACES
+
+#endif // __CONFIG_H__
