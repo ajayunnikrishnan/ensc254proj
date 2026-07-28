@@ -147,8 +147,13 @@ int main(int argc, char **argv) {
     return -1;
   }
   
-  Cache cache;
-  cacheSetUp(&cache, "L1");
+  // ==================== MS4 PART 1 START ====================
+  // Create two independent caches instead of sharing one cache.
+  Cache data_cache;
+  Cache instruction_cache;
+  cacheSetUp(&data_cache, "L1 Data Cache");
+  cacheSetUp(&instruction_cache, "L1 Instruction Cache");
+  // ===================== MS4 PART 1 END =====================
   /* load the executable into memory */
   assert(memory == NULL);
   memory = calloc(MEMORY_SPACE, sizeof(uint8_t)); // allocate zeroed memory
@@ -187,6 +192,11 @@ int main(int argc, char **argv) {
   pipeline_wires_t pipeline_wires = {0};
   total_cycle_counter = 0;
   mem_access_counter = 0;
+  // ==================== MS4 PART 1 START ====================
+  icache_access_counter = 0;
+  icache_hit_count = 0;
+  icache_miss_count = 0;
+  // ===================== MS4 PART 1 END =====================
 
   bootstrap(&pipeline_wires, &pipeline_regs, &regfile);
 
@@ -216,13 +226,14 @@ int main(int argc, char **argv) {
     if (opt_exit) {
       /* simulate forever! */
       while (1) {
-        cycle_pipeline(&regfile, memory, &cache, &pipeline_regs, &pipeline_wires, &ecall_exit);
+        // MS4: pipeline now receives both data and instruction caches.
+        cycle_pipeline(&regfile, memory, &data_cache, &instruction_cache, &pipeline_regs, &pipeline_wires, &ecall_exit);
         if(ecall_exit) break;
       }
     } else {
       /* Either simulate for program instructions */
       while (simins < prog_numins) {
-        cycle_pipeline(&regfile, memory, &cache, &pipeline_regs, &pipeline_wires, &ecall_exit);
+        cycle_pipeline(&regfile, memory, &data_cache, &instruction_cache, &pipeline_regs, &pipeline_wires, &ecall_exit);
         simins++;
       }
     }
@@ -231,7 +242,7 @@ int main(int argc, char **argv) {
     prog_numins = load_program(memory, MEMORY_SPACE, pipeline_wires.pc_src0, "./code/input/FLUSH.input",
                             opt_disasm);
     while (simins < prog_numins) {
-      cycle_pipeline(&regfile, memory, &cache, &pipeline_regs, &pipeline_wires, &ecall_exit);
+      cycle_pipeline(&regfile, memory, &data_cache, &instruction_cache, &pipeline_regs, &pipeline_wires, &ecall_exit);
       simins++;
     }
 
@@ -252,6 +263,36 @@ int main(int argc, char **argv) {
       printf("#Cache hits        = %5ld\n", hit_count);
       printf("#Cache misses      = %5ld\n", miss_count);
     #endif
+    // ==================== MS4 PART 1 START ====================
+    #ifdef PRINT_ICACHE_STATS
+      printf("#I-cache accesses  = %5ld\n", icache_access_counter);
+      printf("#I-cache hits      = %5ld\n", icache_hit_count);
+      printf("#I-cache misses    = %5ld\n", icache_miss_count);
+      printf("#I-cache evictions = %5d\n", instruction_cache.eviction_count);
+    #endif
+    // ===================== MS4 PART 1 END =====================
+
+    // ==================== MS4 PART 2 START ====================
+    #ifdef PRINT_BRANCH_PREDICTOR_STATS
+      // ==================== MS4 PART 3 START ====================
+      #if BRANCH_PREDICTOR_MODE == 2
+      printf("#Branch predictor   = 2-bit saturating counter\n");
+      #elif BRANCH_PREDICTOR_MODE == 1
+      printf("#Branch predictor   = 1-bit last outcome\n");
+      #else
+      printf("#Branch predictor   = disabled\n");
+      #endif
+      // ===================== MS4 PART 3 END =====================
+      printf("#Branch predictions = %5ld\n", branch_prediction_count);
+      printf("#BP correct         = %5ld\n", branch_prediction_correct);
+      printf("#BP incorrect       = %5ld\n", branch_prediction_incorrect);
+      double bp_accuracy = branch_prediction_count == 0
+          ? 0.0
+          : (100.0 * (double)branch_prediction_correct /
+             (double)branch_prediction_count);
+      printf("#BP accuracy        = %5.1f%%\n", bp_accuracy);
+    #endif
+    // ===================== MS4 PART 2 END =====================
 
   }
 
@@ -276,6 +317,8 @@ int main(int argc, char **argv) {
   }
 
   // Deallocate the cache after all operations
-  deallocate(&cache);
+  deallocate(&data_cache);
+  // MS4: free the separately allocated instruction cache.
+  deallocate(&instruction_cache);
   return 0;
 }
