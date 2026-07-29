@@ -19,6 +19,7 @@ extern uint64_t branch_counter;
 extern uint64_t fwd_exex_counter;
 extern uint64_t fwd_exmem_counter;
 extern uint64_t mem_access_counter;
+
 // MS4 PART 1 START
 //  Separate counters for instruction-cache statistics.
 extern uint64_t icache_hit_count;      // instruction cache hits
@@ -91,12 +92,16 @@ typedef struct
   bool branch_taken;
   uint32_t branch_target;
 
+  //for MS1  
+  bool jump;
+  bool branch;
+
   // MS4 PART 2 START
   bool is_branch;            // Whether the instruction is a conditional branch.
   bool is_jump;              // Whether the instruction is a jump instruction.
   bool predicted_taken;      // Whether the branch was predicted to be taken or not.
   uint32_t predicted_target; // The predicted target address for the branch.
-                             // MS4 PART 2 END
+  // MS4 PART 2 END
 } exmem_reg_t;
 
 typedef struct
@@ -114,45 +119,33 @@ typedef struct
   bool branch_taken;
   uint32_t branch_target;
 
-  //  MS4 PART 2 START
+  // MS4 PART 2 START
   bool is_branch;            // Whether the instruction is a conditional branch.
   bool is_jump;              // Whether the instruction is a jump instruction.
   bool predicted_taken;      // Whether the branch was predicted to be taken or not.
   uint32_t predicted_target; // The predicted target address for the branch.
-  //  MS4 PART 2 END
+  // MS4 PART 2 END
 } memwb_reg_t;
-
-///////////////////////////////////////////////////////////////////////////////
-/// Register types with input and output variants for simulator
-///////////////////////////////////////////////////////////////////////////////
 
 typedef struct
 {
-  ifid_reg_t inp;
-  ifid_reg_t out;
+  ifid_reg_t inp; ifid_reg_t out;
 } ifid_reg_pair_t;
 
 typedef struct
 {
-  idex_reg_t inp;
-  idex_reg_t out;
+  idex_reg_t inp; idex_reg_t out;
 } idex_reg_pair_t;
 
 typedef struct
 {
-  exmem_reg_t inp;
-  exmem_reg_t out;
+  exmem_reg_t inp; exmem_reg_t out;
 } exmem_reg_pair_t;
 
 typedef struct
 {
-  memwb_reg_t inp;
-  memwb_reg_t out;
+  memwb_reg_t inp; memwb_reg_t out;
 } memwb_reg_pair_t;
-
-///////////////////////////////////////////////////////////////////////////////
-/// Functional pipeline requirements
-///////////////////////////////////////////////////////////////////////////////
 
 typedef struct
 {
@@ -170,6 +163,12 @@ typedef struct
   uint32_t pc_src1;
 
   bool stall;
+
+  // Added MS2 Wires
+  uint8_t   forwardA; 
+  uint8_t   forwardB; 
+  uint32_t  exmem_fwd_val;
+  uint32_t  memwb_fwd_val;
 } pipeline_wires_t;
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -203,19 +202,7 @@ void stage_writeback(
     pipeline_wires_t *pwires_p,
     regfile_t *regfile_p);
 
-void cycle_pipeline(
-    regfile_t *regfile_p,
-    Byte *memory_p,
-    Cache *dcache_p,
-    // MS4: pass a second, independent cache to the pipeline.
-    Cache *icache_p,
-    pipeline_regs_t *pregs_p,
-    pipeline_wires_t *pwires_p,
-    bool *ecall_exit);
+void bootstrap(pipeline_wires_t* pwires_p, pipeline_regs_t* pregs_p, regfile_t* regfile_p);
+void cycle_pipeline(regfile_t* regfile_p, Byte* memory_p, Cache* dcache_p, Cache* icache_p, pipeline_regs_t* pregs_p, pipeline_wires_t* pwires_p, bool* ecall_exit);
 
-void bootstrap(
-    pipeline_wires_t *pwires_p,
-    pipeline_regs_t *pregs_p,
-    regfile_t *regfile_p);
-
-#endif
+#endif // __PIPELINE_H__
