@@ -38,33 +38,33 @@ Instruction parse_instruction(uint32_t instruction_bits) {
     break;
   // cases for other types of instructions
   /* YOUR CODE HERE */
-  case 0x03: // I-Type load
-  case 0x13: // I-Type non-load
-  case 0x73: // I-Type ecall
+  case 0x03: // i-type load
+  case 0x13: // i-type non-load
+  case 0x73: // i-type ecall
     instruction.itype.rd     = instruction_bits & ((1U << 5) - 1); instruction_bits >>= 5;
     instruction.itype.funct3 = instruction_bits & ((1U << 3) - 1); instruction_bits >>= 3;
     instruction.itype.rs1    = instruction_bits & ((1U << 5) - 1); instruction_bits >>= 5;
     instruction.itype.imm    = instruction_bits & ((1U << 12) - 1);
     break;
-  case 0x23: // S-Type
+  case 0x23: // s-type
     instruction.stype.imm5   = instruction_bits & ((1U << 5) - 1); instruction_bits >>= 5;
     instruction.stype.funct3 = instruction_bits & ((1U << 3) - 1); instruction_bits >>= 3;
     instruction.stype.rs1    = instruction_bits & ((1U << 5) - 1); instruction_bits >>= 5;
     instruction.stype.rs2    = instruction_bits & ((1U << 5) - 1); instruction_bits >>= 5;
     instruction.stype.imm7   = instruction_bits & ((1U << 7) - 1);
     break;
-  case 0x63: // SB-Type
+  case 0x63: // sb-type
     instruction.sbtype.imm5   = instruction_bits & ((1U << 5) - 1); instruction_bits >>= 5;
     instruction.sbtype.funct3 = instruction_bits & ((1U << 3) - 1); instruction_bits >>= 3;
     instruction.sbtype.rs1    = instruction_bits & ((1U << 5) - 1); instruction_bits >>= 5;
     instruction.sbtype.rs2    = instruction_bits & ((1U << 5) - 1); instruction_bits >>= 5;
     instruction.sbtype.imm7   = instruction_bits & ((1U << 7) - 1);
     break;
-  case 0x37: // U-Type
+  case 0x37: // u-type
     instruction.utype.rd  = instruction_bits & ((1U << 5) - 1); instruction_bits >>= 5;
     instruction.utype.imm = instruction_bits & ((1U << 20) - 1);
     break;
-  case 0x6F: // UJ-Type
+  case 0x6F: // uj-type
     instruction.ujtype.rd  = instruction_bits & ((1U << 5) - 1); instruction_bits >>= 5;
     instruction.ujtype.imm = instruction_bits & ((1U << 20) - 1);
     break;

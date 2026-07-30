@@ -81,13 +81,13 @@ void execute_rtype(Instruction instruction, Processor *processor) {
             switch (instruction.rtype.funct7) {
 
                 case 0x0:
-                    // SLL shift left logical
+                    // sll shift left logical
                     processor->R[instruction.rtype.rd] =
                         processor->R[instruction.rtype.rs1] <<
                         (processor->R[instruction.rtype.rs2] & 0x1F);
                     break;
                 case 0x1:
-                    // MULH upper 32 bits of signed * signed (64-bit product)
+                    // mulh upper 32 bits of signed * signed 64 bit product
                     {
                         sDouble product = (sDouble)(sWord)processor->R[instruction.rtype.rs1] * (sDouble)(sWord)processor->R[instruction.rtype.rs2];
                             processor->R[instruction.rtype.rd] = (Word)(product >> 32);
@@ -210,7 +210,7 @@ void execute_rtype(Instruction instruction, Processor *processor) {
                     exit(-1);
                     break;                
             }
-            break;  // was missing: sltu/mulhu fell through into the f3=7 (and) case
+            break;  // was missing, sltu and mulhu fell through into the and case
 
         case 0x7: 
             switch (instruction.rtype.funct7) {
@@ -447,7 +447,7 @@ void execute_store(Instruction instruction, Processor *processor, Byte *memory) 
 
 void execute_jal(Instruction instruction, Processor *processor) {
     /* YOUR CODE HERE */
-    // JAL : rd = PC+4, PC = PC += offset
+    // jal: rd = PC+4, PC = PC += offset
     int offset = get_jump_offset(instruction);
     processor->R[instruction.ujtype.rd] = processor->PC + 4;
     processor->PC += offset;
@@ -455,7 +455,7 @@ void execute_jal(Instruction instruction, Processor *processor) {
 
 void execute_lui(Instruction instruction, Processor *processor) {
     /* YOUR CODE HERE */
-    //LUI: rd = imm << 12 --upper 20 bits are stored into imm field already
+    //lui: rd = imm << 12 --upper 20 bits are stored into imm field already
     processor->R[instruction.utype.rd] = instruction.utype.imm << 12;
     processor->PC += 4;
 }

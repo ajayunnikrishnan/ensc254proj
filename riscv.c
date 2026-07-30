@@ -252,6 +252,33 @@ int main(int argc, char **argv) {
       printf("#Cache hits        = %5ld\n", hit_count);
       printf("#Cache misses      = %5ld\n", miss_count);
     #endif
+    // ms4 part 1, instruction cache stats
+    #ifdef PRINT_ICACHE_STATS
+      printf("#I-cache accesses  = %5ld\n", icache_access_counter);
+      printf("#I-cache hits      = %5ld\n", icache_hit_count);
+      printf("#I-cache misses    = %5ld\n", icache_miss_count);
+      printf("#I-cache evictions = %5d\n", pipeline_icache()->eviction_count);
+    #endif
+
+    // ms4 part 2, branch predictor stats
+    #ifdef PRINT_BRANCH_PREDICTOR_STATS
+      // ms4 part 3, the two bit predictor shares these prints
+      #if BRANCH_PREDICTOR_MODE == 2
+      printf("#Branch predictor   = 2-bit saturating counter\n");
+      #elif BRANCH_PREDICTOR_MODE == 1
+      printf("#Branch predictor   = 1-bit last outcome\n");
+      #else
+      printf("#Branch predictor   = disabled\n");
+      #endif
+      printf("#Branch predictions = %5ld\n", branch_prediction_count);
+      printf("#BP correct         = %5ld\n", branch_prediction_correct);
+      printf("#BP incorrect       = %5ld\n", branch_prediction_incorrect);
+      double bp_accuracy = branch_prediction_count == 0
+          ? 0.0
+          : (100.0 * (double)branch_prediction_correct /
+             (double)branch_prediction_count);
+      printf("#BP accuracy        = %5.1f%%\n", bp_accuracy);
+    #endif
 
   }
 

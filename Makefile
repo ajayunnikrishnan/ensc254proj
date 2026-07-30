@@ -2,7 +2,17 @@ SOURCES := utils.c disasm.c emulator.c riscv.c pipeline.c cache.c
 HEADERS := types.h utils.h riscv.h pipeline.h stage_helpers.h cache.h config.h
 PWD := $(shell pwd)
 CUNIT := -L $(PWD)/CUnit-install/lib -I $(PWD)/CUnit-install/include -llibcunit
-CFLAGS := -g  -Wall
+CFLAGS := -g -Wall
+
+# ms4: pick the branch predictor at build time with BP_MODE=0, 1 or 2
+ifdef BP_MODE
+CFLAGS += -DBRANCH_PREDICTOR_MODE=$(BP_MODE)
+endif
+
+# ms4: build with the ms4 features no matter what config.h is set to
+ifdef MS4
+CFLAGS += -DPRINT_STATS -DICACHE_ENABLE -DPRINT_ICACHE_STATS
+endif
 
 all: riscv
 
@@ -23,3 +33,11 @@ clean:
 
 deepclean: clean
 	rm -rf CUnit-install
+
+# ms4 part 4, simple text menu for building and running the simulator
+tui:
+	./ms4_tests/terminal_gui.sh
+
+# quick check that the gui and needed tools are there
+test-tui:
+	./ms4_tests/terminal_gui.sh --check
