@@ -7,11 +7,18 @@ CFLAGS := -g -Wall
 # ms4: pick the branch predictor at build time with BP_MODE=0, 1 or 2
 ifdef BP_MODE
 CFLAGS += -DBRANCH_PREDICTOR_MODE=$(BP_MODE)
+CFLAGS += -DBRANCH_PREDICTOR_ENTRIES=64 -DTWO_BIT_INITIAL_STATE=0
+CFLAGS += -DPRINT_BRANCH_PREDICTOR_STATS
 endif
 
 # ms4: build with the ms4 features no matter what config.h is set to
 ifdef MS4
 CFLAGS += -DPRINT_STATS -DICACHE_ENABLE -DPRINT_ICACHE_STATS
+endif
+
+# lets run_all_tests.sh build each milestone profile without editing config.h
+ifdef PROFILE_FLAGS
+CFLAGS += $(PROFILE_FLAGS)
 endif
 
 all: riscv

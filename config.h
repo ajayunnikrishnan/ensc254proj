@@ -5,7 +5,7 @@
 
 // required for MS1 (test_simulator_ms1.sh)
 // #define DEBUG_REG_TRACE	// prints the register trace
-// enable `DEBUG_CYCLE` this after completing the code in each stage
+// enable DEBUG_CYCLE this after completing the code in each stage
 // #define DEBUG_CYCLE
 //#define MEM_LATENCY 0		// before ms3, we ignore memory access latency
 
